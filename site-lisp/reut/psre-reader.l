@@ -9,7 +9,7 @@
 ;;   #/[^\[\-\]\d]+/)
 ;;    -> "[^][0-9-]+"
 
-(eval-when (:compile :load-toplevel :execute)
+(eval-when (:compile-toplevel :load-toplevel :execute)
   (require "reut/pkg"))
 
 (in-package "reut")
