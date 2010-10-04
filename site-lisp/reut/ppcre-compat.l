@@ -1,9 +1,10 @@
 ;;; -*- mode:lisp; package:reut -*-
-;;; Port of cl-ppcre/api.lisp
+
+;;; ppcre-compatible API for xyzzy lisp.
+;;; (Port of cl-ppcre/api.lisp)
 
 
-;;; The external API for creating and using scanners.
-
+;;; Copyright (c) 2009-2010, Yousuke Ushiki. All rights reserved.
 ;;; Copyright (c) 2002-2008, Dr. Edmund Weitz. All rights reserved.
 
 ;;; Redistribution and use in source and binary forms, with or without
@@ -120,9 +121,6 @@ short form of VAR-LIST."
 	(setf (fill-pointer starts) idx
 	      (fill-pointer ends) idx)))))
 
-
-;;; apis
-;;; from cl-ppcre/api.lisp
 
 ;; create-scanner (string string) &key case-insensitive-mode multi-line-mode single-line-mode extended-mode destructive => scanner, register-names
 ;; create-scanner (parse-tree t) &key case-insensitive-mode multi-line-mode single-line-mode extended-mode destructive => scanner, register-names
@@ -409,15 +407,14 @@ structure with TARGET-STRING."
 		 nil)))))
 
 
-
-(defun regex-replace (string regexp replacement
-	     &key (case-fold nil) (start 0) end (skip 0) (count nil))
+(defun regex-replace-all (regexp string replacement
+			  &key (preserve-case t) (start 0) end count)
   (cond
    ((functionp replacement)
     (with-output-to-string (os)
       (when (> start 0)
 	(princ (subseq string 0 start) os))
-      (do ((matchfunc (if case-fold #'string-matchp #'string-match))
+      (do ((matchfunc (if preserve-case #'string-match #'string-matchp))
 	   (pos start (match-end 0))
 	   (count (or count -1) (1- count)))
 	  ((or (= count 0) (not (funcall matchfunc regexp string pos end)))
@@ -426,191 +423,19 @@ structure with TARGET-STRING."
 		(funcall replacement (match-string 0))))))
    ((stringp replacement)
     (substitute-string string regexp replacement
-		       :case-fold case-fold :start start :end end
-		       :skip skip :count count))
+		       :case-fold (not preserve-case)
+		       :start start :end end))
    (t (error (make-condition 'type-error
 			     :datum replacement
 			     :expected-type 'string)))))
 
-(defmacro do-replace ((string regexp
-		       &key (case-fold nil) (start 0) end (skip 0) (count nil))
-		      &body form)
-  (let ((binds (loop for i from 0 to 9
-		 collect (list (intern (format nil "$~D" i))
-			       `(match-string ,i)))))
-    (with-unique-names (gs gmf gpos gcount)
-      `(with-output-to-string (,gs)
-	 (when (> ,start 0)
-	   (format ,gs "~A" (subseq ,string 0 ,start)))
-	 (do ((,gmf (if ,case-fold #'string-matchp #'string-match))
-	      (,gpos ,start (match-end 0))
-	      (,gcount (or ,count -1) (1- ,gcount)))
-	     ((or (= ,gcount 0) (not (funcall ,gmf ,regexp ,string ,gpos ,end)))
-	      (format ,gs "~A" (subseq ,string ,gpos)))
-	   (format ,gs "~A~A" (subseq ,string ,gpos (match-beginning 0))
-		   (let ,binds ,@form)))))))
+(defun regex-replace (regexp string replacement
+		      &key (preserve-case t) (start 0) end)
+  (regex-replace-all regexp string replacement
+		     :preserve-case :preserve-case
+		     :start start :end end :count 1))
 
 
-#|
-(defun replace-aux (target-string replacement pos-list reg-list start end
-                                  preserve-case simple-calls element-type)
-  "Auxiliary function used by REGEX-REPLACE and REGEX-REPLACE-ALL.
-POS-LIST contains a list with the start and end positions of all
-matches while REG-LIST contains a list of arrays representing the
-corresponding register start and end positions."
-  (declare #.*standard-optimize-settings*)
-  ;; build the template once before we start the loop
-  (let ((replacement-template (build-replacement-template replacement)))
-    (with-output-to-string (s nil :element-type element-type)
-      ;; loop through all matches and take the start and end of the
-      ;; whole string into account
-      (loop for (from to) on (append (list start) pos-list (list end))
-            ;; alternate between replacement and no replacement
-            for replace = nil then (and (not replace) to)
-            for reg-starts = (if replace (pop reg-list) nil)
-            for reg-ends = (if replace (pop reg-list) nil)
-            for curr-replacement = (if replace
-                                     ;; build the replacement string
-                                     (build-replacement replacement-template
-                                                        target-string
-                                                        start end
-                                                        from to
-                                                        reg-starts reg-ends
-                                                        simple-calls
-                                                        element-type)
-                                     nil)
-            while to
-            if replace
-              do (write-string (if preserve-case
-                                 ;; modify the case of the replacement
-                                 ;; string if necessary
-                                 (funcall (string-case-modifier target-string
-                                                                from to
-                                                                start end)
-                                          curr-replacement)
-                                 curr-replacement)
-                               s)
-            else
-              ;; no replacement
-              do (write-string target-string s :start from :end to)))))
-
-(defun regex-replace (regex target-string replacement &key
-                            (start 0)
-                            (end (length target-string))
-                            preserve-case
-                            simple-calls
-                            (element-type #+:lispworks 'lw:simple-char #-:lispworks 'character))
-  "Try to match TARGET-STRING between START and END against REGEX and
-replace the first match with REPLACEMENT.  Two values are returned;
-the modified string, and T if REGEX matched or NIL otherwise.
-
-  REPLACEMENT can be a string which may contain the special substrings
-\"\\&\" for the whole match, \"\\`\" for the part of TARGET-STRING
-before the match, \"\\'\" for the part of TARGET-STRING after the
-match, \"\\N\" or \"\\{N}\" for the Nth register where N is a positive
-integer.
-
-  REPLACEMENT can also be a function designator in which case the
-match will be replaced with the result of calling the function
-designated by REPLACEMENT with the arguments TARGET-STRING, START,
-END, MATCH-START, MATCH-END, REG-STARTS, and REG-ENDS. (REG-STARTS and
-REG-ENDS are arrays holding the start and end positions of matched
-registers or NIL - the meaning of the other arguments should be
-obvious.)
-
-  Finally, REPLACEMENT can be a list where each element is a string,
-one of the symbols :MATCH, :BEFORE-MATCH, or :AFTER-MATCH -
-corresponding to \"\\&\", \"\\`\", and \"\\'\" above -, an integer N -
-representing register (1+ N) -, or a function designator.
-
-  If PRESERVE-CASE is true, the replacement will try to preserve the
-case (all upper case, all lower case, or capitalized) of the
-match. The result will always be a fresh string, even if REGEX doesn't
-match.
-
-  ELEMENT-TYPE is the element type of the resulting string."
-;  (declare #.*standard-optimize-settings*)
-  (multiple-value-bind (match-start match-end reg-starts reg-ends)
-      (scan regex target-string :start start :end end)
-    (if match-start
-      (values (replace-aux target-string replacement
-                           (list match-start match-end)
-                           (list reg-starts reg-ends)
-                           start end preserve-case
-                           simple-calls element-type)
-              t)
-      (values (subseq target-string start end)
-              nil))))
-
-(defun regex-replace-all (regex target-string replacement &key
-                                (start 0)
-                                (end (length target-string))
-                                preserve-case
-                                simple-calls
-                                (element-type #+:lispworks 'lw:simple-char #-:lispworks 'character))
-  "Try to match TARGET-STRING between START and END against REGEX and
-replace all matches with REPLACEMENT.  Two values are returned; the
-modified string, and T if REGEX matched or NIL otherwise.
-
-  REPLACEMENT can be a string which may contain the special substrings
-\"\\&\" for the whole match, \"\\`\" for the part of TARGET-STRING
-before the match, \"\\'\" for the part of TARGET-STRING after the
-match, \"\\N\" or \"\\{N}\" for the Nth register where N is a positive
-integer.
-
-  REPLACEMENT can also be a function designator in which case the
-match will be replaced with the result of calling the function
-designated by REPLACEMENT with the arguments TARGET-STRING, START,
-END, MATCH-START, MATCH-END, REG-STARTS, and REG-ENDS. (REG-STARTS and
-REG-ENDS are arrays holding the start and end positions of matched
-registers or NIL - the meaning of the other arguments should be
-obvious.)
-
-  Finally, REPLACEMENT can be a list where each element is a string,
-one of the symbols :MATCH, :BEFORE-MATCH, or :AFTER-MATCH -
-corresponding to \"\\&\", \"\\`\", and \"\\'\" above -, an integer N -
-representing register (1+ N) -, or a function designator.
-
-  If PRESERVE-CASE is true, the replacement will try to preserve the
-case (all upper case, all lower case, or capitalized) of the
-match. The result will always be a fresh string, even if REGEX doesn't
-match.
-
-  ELEMENT-TYPE is the element type of the resulting string."
-  (declare #.*standard-optimize-settings*)
-  (let ((pos-list '())
-        (reg-list '()))
-    (do-scans (match-start match-end reg-starts reg-ends regex target-string
-                           nil
-                           :start start :end end)
-      (push match-start pos-list)
-      (push match-end pos-list)
-      (push reg-starts reg-list)
-      (push reg-ends reg-list))
-    (if pos-list
-      (values (replace-aux target-string replacement
-                           (nreverse pos-list)
-                           (nreverse reg-list)
-                           start end preserve-case
-                           simple-calls element-type)
-              t)
-      (values (subseq target-string start end)
-	      nil))))
-|#
-
-;;; from clisp/regexp
-
-(defmacro with-loop-split ((var stream regex &key start end) &body body)
-  (with-unique-names (line)
-    `(do ((,line #1=(read-line ,stream nil nil) #1#))
-	 ((null ,line))
-       (let ((,var (split ,regex ,line
-			  :start (or ,start 0)
-			  :end (or ,end (length ,line)))))
-	 ,@body))))
-
-
-
-(provide "reut/api")
+(provide "reut/ppcre-compat")
 
 
