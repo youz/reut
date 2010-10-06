@@ -39,11 +39,8 @@
 (export '(scan scan-to-strings
 	  do-scans do-matches do-matches-as-strings
 	  all-matches all-matches-as-strings split
-	  regex-replace
-	  regex-replace-all
-	  register-groups-bind do-register-groups
-	  with-loop-split
-	  do-replace))
+	  regex-replace regex-replace-all
+	  register-groups-bind do-register-groups))
 
 ;;; utilities macros and functions
 ;;; from cl-ppcre/util.lisp
@@ -408,31 +405,33 @@ structure with TARGET-STRING."
 
 
 (defun regex-replace-all (regexp string replacement
-			  &key (preserve-case t) (start 0) end count)
+			  &key (start 0) end count case-fold)
   (cond
    ((functionp replacement)
-    (with-output-to-string (os)
-      (when (> start 0)
-	(princ (subseq string 0 start) os))
-      (do ((matchfunc (if preserve-case #'string-match #'string-matchp))
-	   (pos start (match-end 0))
-	   (count (or count -1) (1- count)))
-	  ((or (= count 0) (not (funcall matchfunc regexp string pos end)))
-	   (princ (subseq string pos) os))
-	(format os "~A~A" (subseq string pos (match-beginning 0))
-		(funcall replacement (match-string 0))))))
+    (let ((c 0) (count (or count -1)))
+      (values
+       (with-output-to-string (os)
+	 (when (> start 0)
+	   (princ (subseq string 0 start) os))
+	 (do ((matchfunc (if case-fold #'string-matchp #'string-match))
+	      (pos start (match-end 0)))
+	     ((or (= c count) (not (funcall matchfunc regexp string pos end)))
+	      (princ (subseq string pos) os))
+	   (incf c)
+	   (format os "~A~A" (subseq string pos (match-beginning 0))
+	     (funcall replacement (match-string 0)))))
+       c)))
    ((stringp replacement)
     (substitute-string string regexp replacement
-		       :case-fold (not preserve-case)
-		       :start start :end end))
+		       :case-fold case-fold :start start :end end))
    (t (error (make-condition 'type-error
 			     :datum replacement
-			     :expected-type 'string)))))
+			     :expected-type '(or string function))))))
 
 (defun regex-replace (regexp string replacement
-		      &key (preserve-case t) (start 0) end)
+		      &key case-fold (start 0) end)
   (regex-replace-all regexp string replacement
-		     :preserve-case :preserve-case
+		     :case-fold :case-fold
 		     :start start :end end :count 1))
 
 
