@@ -20,7 +20,7 @@
   (with-output-to-string (os)
     (labels
 	((start ()
-	   (do ((c #1=(read-char stream nil nil) #1#))
+	   (do ((c #1=(read-char stream nil subchar) #1#))
 	       ((eql c subchar))
 	     (case c
 	       ((#\( #\) #\{ #\} #\|) (format os "\\~A" c))
@@ -55,7 +55,7 @@
 		    (hyphen ""))
 		   ((eql c #\]) (princ hyphen cs))
 		 (unless c
-		   #2=(error "e[f‚É‘Î‰‚·‚ée]f‚ª‚ ‚è‚Ü‚¹‚ñ" 'simple-error))
+		   #2=(error "ï¿½e[ï¿½fï¿½É‘Î‰ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½e]ï¿½fï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½" 'simple-error))
 		 (case c
 		   (#\\
 		    (let ((e #1#))
