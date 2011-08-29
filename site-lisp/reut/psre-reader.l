@@ -51,11 +51,11 @@
 	     (princ #1# os))
 	   (format os "~A]"
 	     (with-output-to-string (cs)
-	       (do ((c #1# #1#)
+	       (do ((c #2=(read-char stream nil nil) #2#)
 		    (hyphen ""))
 		   ((eql c #\]) (princ hyphen cs))
 		 (unless c
-		   #2=(error "ï¿½e[ï¿½fï¿½É‘Î‰ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½e]ï¿½fï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½" 'simple-error))
+		   #3=(error "e[f‚É‘Î‰‚·‚ée]f‚ª‚ ‚è‚Ü‚¹‚ñ" 'simple-error))
 		 (case c
 		   (#\\
 		    (let ((e #1#))
@@ -72,7 +72,7 @@
 			(#\x (print-code cs #1# #1#))
 			(#\X (print-code cs #1# #1# #1# #1#))
 			(t (princ e cs)))))
-		   (subchar #2#)
+		   (subchar #3#)
 		   (t (princ c cs))))))))
       (start))))
 
